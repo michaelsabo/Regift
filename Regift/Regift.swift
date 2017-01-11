@@ -90,6 +90,17 @@ public struct Regift {
 
             completion(gift.createGif())
     }
+  
+    public static func createGIFFromSource(
+        _ sourceFileURL: URL,
+        destinationFileURL: URL? = nil,
+        completion: (_ result: URL?) -> Void) {
+        let gift = Regift(
+          sourceFileURL: sourceFileURL,
+          destinationFileURL: destinationFileURL
+        )
+        completion(gift.createGif())
+    }
 
     /**
         Create a GIF from a movie stored at the given URL. This allows you to choose a start time and duration in the source material that will be used to create the GIF which meets the output parameters.
@@ -205,6 +216,22 @@ public struct Regift {
         self.movieLength = Float(asset.duration.value) / Float(asset.duration.timescale)
 
         self.loopCount = loopCount
+    }
+  
+    public init(sourceFileURL: URL, destinationFileURL: URL? = nil) {
+      self.sourceFileURL = sourceFileURL
+      self.asset = AVURLAsset(url: sourceFileURL, options: nil)
+      self.movieLength = Float(asset.duration.value) / Float(asset.duration.timescale)
+      self.duration = movieLength
+      self.loopCount = 0
+      self.destinationFileURL = destinationFileURL
+      
+      let tracks = asset.tracks(withMediaType: AVMediaTypeVideo)
+      
+      let frameRate =  min(Float(tracks[0].minFrameDuration.value), tracks[0].nominalFrameRate)
+      let frameLength = self.duration * frameRate
+      self.frameCount = Int(floor(frameLength))
+      self.delayTime = Float(self.duration) / Float(self.frameCount)
     }
 
     /**
