@@ -94,12 +94,12 @@ public struct Regift {
     public static func createGIFFromSource(
         _ sourceFileURL: URL,
         destinationFileURL: URL? = nil,
-        completion: (_ result: URL?) -> Void) {
+        completion: (_ result: URL?, _ size:Int) -> Void) {
         let gift = Regift(
           sourceFileURL: sourceFileURL,
           destinationFileURL: destinationFileURL
         )
-        completion(gift.createGif())
+        completion(gift.createGif(), gift.videoFileSize)
     }
 
     /**
@@ -156,7 +156,7 @@ public struct Regift {
     fileprivate var movieLength: Float
 
     /// The number of frames we are going to use to create the gif.
-    fileprivate let frameCount: Int
+    fileprivate var frameCount: Int
 
     /// The amount of time each frame will remain on screen in the gif.
     fileprivate let delayTime: Float
@@ -218,20 +218,35 @@ public struct Regift {
         self.loopCount = loopCount
     }
   
+  var videoFileSize : Int = 0
+  
     public init(sourceFileURL: URL, destinationFileURL: URL? = nil) {
       self.sourceFileURL = sourceFileURL
+      
       self.asset = AVURLAsset(url: sourceFileURL, options: nil)
       self.movieLength = Float(asset.duration.value) / Float(asset.duration.timescale)
       self.duration = movieLength
       self.loopCount = 0
       self.destinationFileURL = destinationFileURL
-      
       let tracks = asset.tracks(withMediaType: AVMediaTypeVideo)
-      
-      let frameRate =  min(Float(tracks[0].minFrameDuration.value), tracks[0].nominalFrameRate)
+      let frameRate =  tracks[0].nominalFrameRate
       let frameLength = self.duration * frameRate
       self.frameCount = Int(floor(frameLength))
-      self.delayTime = Float(self.duration) / Float(self.frameCount)
+      var delay = Float(self.duration) / Float(self.frameCount)
+      //
+      if (delay < 0.02) {
+        self.frameCount = self.frameCount / 2
+        delay = Float(self.duration) / Float(self.frameCount)
+      }
+
+      self.delayTime = delay
+      var estimatedSize:Float = 0.0
+      for track in tracks {
+        var rate = track.estimatedDataRate / 8.0
+        var seconds = Float(CMTimeGetSeconds(track.timeRange.duration))
+        estimatedSize += seconds * rate
+      }
+      self.videoFileSize = Int(floor(estimatedSize))
     }
 
     /**
@@ -322,7 +337,7 @@ public struct Regift {
         let gifGroup = Group()
         var dispatchError: Bool = false
         gifGroup.enter()
-
+      
         generator.generateCGImagesAsynchronously(forTimes: times, completionHandler: { (requestedTime, image, actualTime, result, error) in
             guard let imageRef = image , error == nil else {
                 print("An error occurred: \(error), image is \(image)")
@@ -337,10 +352,9 @@ public struct Regift {
                 gifGroup.leave()
             }
         })
-
+      
         // Wait for the asynchronous generator to finish.
         gifGroup.wait()
-
         // If there was an error in the generator, throw the error.
         if dispatchError {
             throw RegiftError.AddFrameToDestination
